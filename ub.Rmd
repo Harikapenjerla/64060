@@ -1,0 +1,155 @@
+---
+title: "Universal Bank - inn"
+author: "Murali Shanker"
+date: "10/15/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+***
+
+# Load libraries
+```{r}
+library(caret)
+library(dplyr)
+library(ggplot2)
+library(FNN)
+library(gmodels)
+```
+
+# Read and clean input data
+```{r}
+ubfd <- read.csv("UniversalBank.csv")
+ubfd <- ubfd[,c(-1,-5)] # drop ID and Zipcode
+
+# code variables as factor
+ubfd$Personal.Loan <- as.factor(ubfd$Personal.Loan)
+ubfd$Education <- as.factor(ubfd$Education)
+
+# convert variable with more than two levels to dummy variables
+levels(ubfd$Education)
+Education <- dummyVars(~Education,ubfd)
+EduDV <- predict(Education,ubfd) # convert dummy variables to data frame; needed for cbind
+ubfd <- cbind(ubfd,EduDV)
+ubfdc <- subset(ubfd,select=-c(Education)) # No need to keep Education in the model
+head(ubfdc) # Clean data 
+```
+
+Now, we split the data into training and validation
+```{r}
+set.seed(15)
+Train_Index = createDataPartition(ubfdc$Personal.Loan,p=0.6, list=FALSE) # 60% reserved for Training
+Train_Data = ubfdc[Train_Index,]
+Validation_Data = ubfdc[-Train_Index,] # Validation  data is rest
+
+summary(Train_Data)
+```
+
+***
+
+## Question 1
+
+Consider the following customer:
+Age = 40, Experience = 10, Income = 84, Family = 2, CCAvg = 2, Education_1 = 0, Education_2 = 1, Education_3 = 0, Mortgage = 0, Securities Account = 0, CD Account = 0, Online = 1, and Credit Card = 1. Perform a k-NN classification with all predictors except ID and ZIP code using k = 1. Remember to transform categorical predictors with more than two categories into dummy variables first. Specify the success class as 1 (loan acceptance), and use the default cutoff value of 0.5. How would this customer be classified?
+
+```{r}
+# Create a single data record
+Test_Data <- matrix(c(40,10,84,2,2,0,0,0,1,1,0,1,0),nrow=1)
+colnames(Test_Data) <- c("Age","Experience","Income","Family","CCAvg","Mortgage","Securities.Account","CD.Account","Online","CreditCard","Education.1","Education.2","Education.3")
+Test_Data
+```
+
+Now, let us train and test
+```{r}
+c1 <- Train_Data$Personal.Loan
+nn <- knn(Train_Data[,-7],Test_Data,Train_Data[,7])
+nn
+```
+
+***
+
+## Question 2
+
+What is a choice of k that balances between overfitting and ignoring the predictor information?
+
+We will now run our model and test on the validation set
+```{r}
+# initialize a data frame with two columns: k, and accuracy.
+library(caret)
+accuracy.df <- data.frame(k = seq(1, 14, 1), accuracy = rep(0, 14))
+
+# compute knn for different k on validation.
+for(i in 1:14) {
+  knn.pred <- knn(Train_Data[,-7], Validation_Data[,-7], 
+                  cl = Train_Data[,7], k = i)
+  accuracy.df[i, 2] <- confusionMatrix(knn.pred, Validation_Data[,7])$overall[1] 
+}
+accuracy.df
+```
+
+The best k is 4.
+
+***
+
+## Question 3
+Show the confusion matrix for the validation data that results from using the best k.
+```{r}
+ knn.pred <- knn(Train_Data[,-7], Validation_Data[,-7], 
+                  cl = Train_Data[,7], k = 4)
+  accuracy.df <- confusionMatrix(knn.pred, Validation_Data[,7])$overall[1]
+  accuracy.df
+  CrossTable(x=Validation_Data[,7],y=knn.pred)
+```
+
+***
+
+## Question 4
+Consider the following customer: Age = 40, Experience = 10, Income = 84,
+Family = 2, CCAvg = 2, Education_1 = 0, Education_2 = 1, Education_3 = 0,
+Mortgage = 0, Securities Account = 0, CD Account = 0, Online = 1 and Credit
+Card = 1. Classify the customer using the best k.
+```{r}
+c1 <- Train_Data$Personal.Loan
+nn <- knn(Train_Data[,-7],Test_Data,Train_Data[,7], k = 4)
+nn
+```
+ ***
+ 
+ ## Question 5
+
+Repartition the data, this time into training, validation, and test sets (50% : 30% : 20%). Apply the k-NN method with the k chosen above. Compare the confusion matrix of the test set with that of the training and validation sets. Comment on the differences and their reason.
+
+```{r}
+set.seed(20)
+Train_Index = createDataPartition(ubfdc$Personal.Loan,p=0.5, list=FALSE) # 50% reserved for Training
+Train_Data = ubfdc[Train_Index,]
+ValTest_data = ubfdc[-Train_Index,]
+
+Validation_Index <- createDataPartition(ValTest_data$Personal.Loan,p=0.6, list=FALSE) #60% of the leftover data is validation
+Validation_Data <- ValTest_data[Validation_Index,]
+Test_Data <- ValTest_data[-Validation_Index,]
+summary(Train_Data)
+summary(Validation_Data)
+summary(Test_Data)
+```
+
+Let's now run knn on the training set, and compare the confusion matrices on the validation and test sets
+```{r}
+
+# Validation Data
+ knn.pred <- knn(Train_Data[,-7], Validation_Data[,-7], 
+                  cl = Train_Data[,7], k = 4)
+  accuracy.df <- confusionMatrix(knn.pred, Validation_Data[,7])$overall[1]
+  accuracy.df
+  CrossTable(x=Validation_Data[,7],y=knn.pred)
+  
+# Test Data
+   knn.pred <- knn(Train_Data[,-7], Test_Data[,-7], 
+                  cl = Train_Data[,7], k = 4)
+  accuracy.df <- confusionMatrix(knn.pred, Test_Data[,7])$overall[1]
+  accuracy.df
+  CrossTable(x=Test_Data[,7],y=knn.pred)
+```
